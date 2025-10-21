@@ -13,16 +13,23 @@ const client = new MongoClient(process.env.MONGO_URI);
 let db;
 
 // Conectar ao MongoDB
-async function connectDB() {
+async function startServer() {
   try {
     await client.connect();
     db = client.db("bancoreembolso");
-    console.log("Conectado ao MongoDB!");
+    console.log("✅ Conectado ao MongoDB!");
+
+    const port = process.env.PORT || 3000;
+    app.listen(port, () => {
+      console.log(`🚀 Servidor rodando na porta ${port}`);
+    });
   } catch (err) {
-    console.error("Erro ao conectar ao MongoDB:", err);
+    console.error("❌ Erro ao conectar ao MongoDB:", err);
+    process.exit(1); // encerra o processo se o banco falhar
   }
 }
-connectDB();
+
+startServer();
 
 // --------- Rotas de usuários ---------
 app.post('/users', async (req, res) => {
