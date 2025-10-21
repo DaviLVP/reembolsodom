@@ -30,7 +30,18 @@ async function startServer() {
 }
 
 startServer();
+// ... dentro da função startServer()
 
+client = new MongoClient(uri, {
+  serverApi: {
+    // ...
+  },
+  // ✅ É ESSA PARTE QUE CORRIGE O ERRO NO RAILWAY
+  ssl: true, 
+  tlsAllowInvalidCertificates: true
+});
+
+// ...
 // --------- Rotas de usuários ---------
 app.post('/users', async (req, res) => {
   try {
