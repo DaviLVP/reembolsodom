@@ -96,6 +96,33 @@ app.delete('/expenses/:id', async (req, res) => {
   }
 });
 
+// --------- NOVO ENDPOINT DE LOGIN ---------
+app.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Busca usuário pelo email
+    const user = await db.collection('users').findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: "Credenciais inválidas" });
+    }
+
+    // Compara senha enviada com password_hash
+    const isValid = await bcrypt.compare(password, user.password_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: "Credenciais inválidas" });
+    }
+
+    // Retorna dados do usuário (sem password_hash)
+    const { password_hash, ...userData } = user;
+    res.json(userData);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno no servidor" });
+  }
+});
+
 // --------- Start server ---------
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
