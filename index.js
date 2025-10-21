@@ -32,17 +32,16 @@ async function startServer() {
 
   try {
     // 1. Conexão com o MongoDB
-    // ✅ CORREÇÃO FINAL PARA SSL/TLS: Força o TLS 1.2 para resolver a falha de protocolo no ambiente Railway
+    // ✅ CORREÇÃO SSL/TLS: Voltando à configuração mais compatível para o Railway
     client = new MongoClient(uri, { 
       serverApi: {
         version: ServerApiVersion.v1,
         strict: true,
         deprecationErrors: true,
       },
-      // Configurações TLS
+      // Configurações TLS essenciais para ambientes Linux como Railway
       ssl: true,
-      tlsAllowInvalidCertificates: true, // Mantido como fallback para certificados
-      minTlsVersion: 'tls12' // <--- NOVO FIX: Força o uso do protocolo TLS 1.2
+      tlsAllowInvalidCertificates: true 
     });
     
     await client.connect();
