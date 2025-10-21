@@ -3,7 +3,6 @@ const express = require('express');
 const { MongoClient, ObjectId } = require('mongodb');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const bcrypt = require('bcrypt');
 
 const app = express();
 app.use(cors());
@@ -28,8 +27,7 @@ connectDB();
 app.post('/users', async (req, res) => {
   try {
     const { email, name, role, password } = req.body;
-    const password_hash = await bcrypt.hash(password, 10);
-    const result = await db.collection('users').insertOne({ email, name, role, password_hash });
+    const result = await db.collection('users').insertOne({ email, name, role, password });
     res.json({ insertedId: result.insertedId });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -96,25 +94,21 @@ app.delete('/expenses/:id', async (req, res) => {
   }
 });
 
-// --------- NOVO ENDPOINT DE LOGIN ---------
+// --------- Endpoint de login simples ---------
 app.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    // Busca usuário pelo email
+    const { email, password: senhaEnviada } = req.body; // renomeado para evitar conflito
     const user = await db.collection('users').findOne({ email });
     if (!user) {
       return res.status(401).json({ error: "Credenciais inválidas" });
     }
 
-    // Compara senha enviada com password_hash
-    const isValid = await bcrypt.compare(password, user.password_hash);
-    if (!isValid) {
+    if (user.password !== senhaEnviada) {
       return res.status(401).json({ error: "Credenciais inválidas" });
     }
 
-    // Retorna dados do usuário (sem password_hash)
-    const { password_hash, ...userData } = user;
+    // Retorna dados do usuário sem a senha
+    const { password, ...userData } = user;
     res.json(userData);
 
   } catch (err) {
