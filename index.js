@@ -6,7 +6,8 @@ const express = require('express');
 const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const bcrypt = require = require('bcrypt'); // Note: 'bcrypt' é síncrono, 'bcryptjs' é assíncrono e comum no Node
+// ✅ CORREÇÃO: Sintaxe correta para importação do bcrypt
+const bcrypt = require('bcrypt');
 
 // Configuração do Express
 const app = express();
@@ -31,21 +32,22 @@ async function startServer() {
 
   try {
     // 1. Conexão com o MongoDB
-    // ✅ CORREÇÃO APLICADA PARA SSL/TLS: Adiciona as opções de SSL/TLS para funcionar no Railway/Linux
+    // ✅ CORREÇÃO FINAL PARA SSL/TLS: Força o TLS 1.2 para resolver a falha de protocolo no ambiente Railway
     client = new MongoClient(uri, { 
       serverApi: {
         version: ServerApiVersion.v1,
         strict: true,
         deprecationErrors: true,
       },
+      // Configurações TLS
       ssl: true,
-      tlsAllowInvalidCertificates: true // Permite certificados inválidos (solução para ambiente Railway)
+      tlsAllowInvalidCertificates: true, // Mantido como fallback para certificados
+      minTlsVersion: 'tls12' // <--- NOVO FIX: Força o uso do protocolo TLS 1.2
     });
     
     await client.connect();
 
     // Define o DB para o nome que você usou ("bancoreembolso")
-    // Se o nome do banco estiver na URI, você pode usar client.db()
     db = client.db("bancoreembolso");
     console.log("✅ Conectado ao MongoDB!");
 
