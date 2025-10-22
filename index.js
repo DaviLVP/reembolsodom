@@ -12,14 +12,14 @@ app.use(bodyParser.json());
 const client = new MongoClient(process.env.MONGO_URI);
 let db;
 
-// Conectar ao MongoDB
+// --------- Conectar ao MongoDB ---------
 async function connectDB() {
   try {
     await client.connect();
     db = client.db("bancoreembolso");
-    console.log("Conectado ao MongoDB!");
+    console.log("✅ Conectado ao MongoDB!");
   } catch (err) {
-    console.error("Erro ao conectar ao MongoDB:", err);
+    console.error("❌ Erro ao conectar ao MongoDB:", err);
   }
 }
 connectDB();
@@ -55,7 +55,7 @@ app.post('/expenses', async (req, res) => {
   try {
     const expense = {
       ...req.body,
-      status: "pendente", // novo campo padrão
+      status: "pendente",
       valor_aprovado: null,
       createdAt: new Date()
     };
@@ -169,29 +169,47 @@ app.put('/expenses/:id/status', async (req, res) => {
   }
 });
 
-// --------- Listar despesas pendentes (para financeiro e sócio) ---------
+// --------- Listar despesas pendentes ---------
 app.get('/expenses/pendentes', async (req, res) => {
   try {
-    const pendentes = await db.collection('expenses')
-      .find({ status: "pendente" })
-      .toArray();
+    const { userId, role } = req.query;
 
+    if (!role) {
+      return res.status(400).json({ error: "Parâmetro 'role' é obrigatório" });
+    }
+
+    let filter = { status: "pendente" };
+
+    // Funcionário vê apenas as próprias despesas
+    if (role === "funcionario" && userId) {
+      try {
+        filter.userId = new ObjectId(userId);
+      } catch (e) {
+        // Se não for um ObjectId válido, tratar como string
+        filter.userId = userId;
+      }
+    }
+
+    // Sócio e Financeiro veem todas as pendentes
+    if (role === "socio" || role === "financeiro") {
+      filter = { status: "pendente" };
+    }
+
+    const pendentes = await db.collection('expenses').find(filter).toArray();
     res.json(pendentes);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Erro ao buscar despesas pendentes:", err);
+    res.status(500).json({ error: "Erro ao buscar despesas pendentes" });
   }
 });
 
-// --------- Endpoint de login simples ---------
+// --------- Endpoint de login ---------
 app.post('/login', async (req, res) => {
   try {
     const { email, password: senhaEnviada } = req.body;
     const user = await db.collection('users').findOne({ email });
-    if (!user) {
-      return res.status(401).json({ error: "Credenciais inválidas" });
-    }
 
-    if (user.password !== senhaEnviada) {
+    if (!user || user.password !== senhaEnviada) {
       return res.status(401).json({ error: "Credenciais inválidas" });
     }
 
@@ -206,5 +224,5 @@ app.post('/login', async (req, res) => {
 // --------- Start server ---------
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
+  console.log(`🚀 Servidor rodando na porta ${port}`);
 });
