@@ -150,22 +150,33 @@ app.get('/expenses/:id/receipt', async (req, res) => {
 });
 
 // --------- Atualizar status de despesa (aprovar, reprovar, parcial) ---------
+
 app.put('/expenses/:id/status', async (req, res) => {
   try {
-    const { status, valor_aprovado } = req.body;
+    const { status, valor_aprovado, rejection_reason, approval_notes } = req.body;
 
     if (!["pendente", "aprovado", "reprovado", "parcial"].includes(status)) {
       return res.status(400).json({ error: "Status inválido" });
     }
 
+    // Monta objeto de atualização dinamicamente
+    const updateData = {
+      status,
+      valor_aprovado: valor_aprovado || null,
+    };
+
+    if (rejection_reason) updateData.rejection_reason = rejection_reason;
+    if (approval_notes) updateData.approval_notes = approval_notes;
+
     await db.collection('expenses').updateOne(
       { _id: new ObjectId(req.params.id) },
-      { $set: { status, valor_aprovado: valor_aprovado || null } }
+      { $set: updateData }
     );
 
     res.json({ message: "Status atualizado com sucesso" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Erro ao atualizar status:", err);
+    res.status(500).json({ error: "Erro interno no servidor" });
   }
 });
 
