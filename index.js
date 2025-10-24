@@ -6,6 +6,7 @@ const cors = require('cors');
 const multer = require('multer');
 const upload = multer();
 const app = express();
+
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -27,14 +28,21 @@ connectDB();
 // --------- Rotas de usuários ---------
 app.post('/users', async (req, res) => {
   try {
-    const { email, name, role, password } = req.body;
+    const { email, name, role, password, pix_key } = req.body;
 
     const existingUser = await db.collection('users').findOne({ email });
     if (existingUser) {
       return res.status(409).json({ error: 'Email já cadastrado' });
     }
 
-    const result = await db.collection('users').insertOne({ email, name, role, password });
+    const result = await db.collection('users').insertOne({
+      email,
+      name,
+      role,
+      password,
+      pix_key: pix_key || '' // permite cadastrar vazio ou com valor
+    });
+
     res.json({ insertedId: result.insertedId });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -46,6 +54,37 @@ app.get('/users/:id', async (req, res) => {
     const user = await db.collection('users').findOne({ _id: new ObjectId(req.params.id) });
     res.json(user);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --------- Atualizar dados do usuário (inclusive chave Pix) ---------
+app.put('/users/:id', async (req, res) => {
+  try {
+    const { name, role, email, password, pix_key } = req.body;
+
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (role) updateData.role = role;
+    if (email) updateData.email = email;
+    if (password) updateData.password = password;
+    if (pix_key !== undefined) updateData.pix_key = pix_key; // permite salvar ou limpar a chave Pix
+
+    const result = await db.collection('users').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    // Retorna o usuário atualizado
+    const updatedUser = await db.collection('users').findOne({ _id: new ObjectId(req.params.id) });
+    res.json(updatedUser);
+
+  } catch (err) {
+    console.error("Erro ao atualizar usuário:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -150,7 +189,6 @@ app.get('/expenses/:id/receipt', async (req, res) => {
 });
 
 // --------- Atualizar status de despesa (aprovar, reprovar, parcial) ---------
-
 app.put('/expenses/:id/status', async (req, res) => {
   try {
     const { status, valor_aprovado, rejection_reason, approval_notes } = req.body;
@@ -159,12 +197,7 @@ app.put('/expenses/:id/status', async (req, res) => {
       return res.status(400).json({ error: "Status inválido" });
     }
 
-    // Monta objeto de atualização dinamicamente
-    const updateData = {
-      status,
-      valor_aprovado: valor_aprovado || null,
-    };
-
+    const updateData = { status, valor_aprovado: valor_aprovado || null };
     if (rejection_reason) updateData.rejection_reason = rejection_reason;
     if (approval_notes) updateData.approval_notes = approval_notes;
 
@@ -191,17 +224,14 @@ app.get('/expenses/pendentes', async (req, res) => {
 
     let filter = { status: "pendente" };
 
-    // Funcionário vê apenas as próprias despesas
     if (role === "funcionario" && userId) {
       try {
         filter.userId = new ObjectId(userId);
-      } catch (e) {
-        // Se não for um ObjectId válido, tratar como string
+      } catch {
         filter.userId = userId;
       }
     }
 
-    // Sócio e Financeiro veem todas as pendentes
     if (role === "socio" || role === "financeiro") {
       filter = { status: "pendente" };
     }
