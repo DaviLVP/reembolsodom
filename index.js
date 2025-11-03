@@ -145,48 +145,87 @@ app.delete('/expenses/:id', async (req, res) => {
   }
 });
 
-// --------- Upload de imagem ---------
-app.post('/expenses/:id/receipt', upload.single('receipt'), async (req, res) => {
+// --------- Upload de múltiplas imagens ---------
+app.post('/expenses/:id/receipts', upload.array('receipts', 5), async (req, res) => {
   try {
     const expenseId = req.params.id;
 
-    if (!req.file) {
+    // Verifica se algum arquivo foi enviado
+    if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    const receiptData = {
-      data: req.file.buffer,
-      name: req.file.originalname,
-      contentType: req.file.mimetype,
-    };
+    // Mapeia os arquivos enviados
+    const receiptsData = req.files.map(file => ({
+      data: file.buffer,
+      name: file.originalname,
+      contentType: file.mimetype,
+      uploadedAt: new Date(),
+    }));
 
+    // Adiciona as imagens ao array "receipts" da despesa
     await db.collection('expenses').updateOne(
       { _id: new ObjectId(expenseId) },
-      { $set: { receipt: receiptData } }
+      { $push: { receipts: { $each: receiptsData } } }
     );
 
-    res.json({ message: 'Imagem salva com sucesso' });
+    res.json({
+      message: 'Comprovantes salvos com sucesso',
+      count: receiptsData.length,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// --------- Rota para exibir imagem ---------
-app.get('/expenses/:id/receipt', async (req, res) => {
+
+// --------- Rota para listar metadados dos comprovantes ---------
+app.get('/expenses/:id/receipts', async (req, res) => {
   try {
     const expenseId = req.params.id;
-    const expense = await db.collection('expenses').findOne({ _id: new ObjectId(expenseId) });
+    const expense = await db.collection('expenses').findOne({
+      _id: new ObjectId(expenseId),
+    });
 
-    if (!expense || !expense.receipt) {
-      return res.status(404).json({ error: 'Imagem não encontrada' });
+    if (!expense || !expense.receipts || expense.receipts.length === 0) {
+      return res.status(404).json({ error: 'Nenhum comprovante encontrado' });
     }
 
-    res.set('Content-Type', expense.receipt.contentType);
-    res.send(expense.receipt.data.buffer);
+    // Retorna apenas os metadados
+    const receiptsInfo = expense.receipts.map((r, index) => ({
+      index,
+      name: r.name,
+      contentType: r.contentType,
+      uploadedAt: r.uploadedAt,
+    }));
+
+    res.json(receiptsInfo);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+
+// --------- Rota para exibir um comprovante específico ---------
+app.get('/expenses/:id/receipts/:index', async (req, res) => {
+  try {
+    const { id, index } = req.params;
+    const expense = await db.collection('expenses').findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!expense || !expense.receipts || !expense.receipts[index]) {
+      return res.status(404).json({ error: 'Comprovante não encontrado' });
+    }
+
+    const receipt = expense.receipts[index];
+    res.set('Content-Type', receipt.contentType);
+    res.send(receipt.data.buffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // --------- Atualizar status de despesa (aprovar, reprovar, parcial) ---------
 app.put('/expenses/:id/status', async (req, res) => {
