@@ -4,6 +4,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const multer = require('multer');
+const bcrypt = require('bcrypt'); // <-- adicionado
 const upload = multer();
 const app = express();
 
@@ -35,16 +36,21 @@ app.post('/users', async (req, res) => {
       return res.status(409).json({ error: 'Email já cadastrado' });
     }
 
+    // Criptografa a senha
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const result = await db.collection('users').insertOne({
       email,
       name,
       role,
-      password,
-      pix_key: pix_key || '' // permite cadastrar vazio ou com valor
+      password: hashedPassword,
+      pix_key: pix_key || '',
+      isPasswordHashed: true
     });
 
     res.json({ insertedId: result.insertedId });
   } catch (err) {
+    console.error('Erro ao criar usuário:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -62,13 +68,17 @@ app.get('/users/:id', async (req, res) => {
 app.put('/users/:id', async (req, res) => {
   try {
     const { name, role, email, password, pix_key } = req.body;
-
     const updateData = {};
+
     if (name) updateData.name = name;
     if (role) updateData.role = role;
     if (email) updateData.email = email;
-    if (password) updateData.password = password;
-    if (pix_key !== undefined) updateData.pix_key = pix_key; // permite salvar ou limpar a chave Pix
+    if (pix_key !== undefined) updateData.pix_key = pix_key;
+
+    if (password) {
+      updateData.password = await bcrypt.hash(password, 10);
+      updateData.isPasswordHashed = true;
+    }
 
     const result = await db.collection('users').updateOne(
       { _id: new ObjectId(req.params.id) },
@@ -79,10 +89,8 @@ app.put('/users/:id', async (req, res) => {
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
-    // Retorna o usuário atualizado
     const updatedUser = await db.collection('users').findOne({ _id: new ObjectId(req.params.id) });
     res.json(updatedUser);
-
   } catch (err) {
     console.error("Erro ao atualizar usuário:", err);
     res.status(500).json({ error: err.message });
@@ -150,12 +158,10 @@ app.post('/expenses/:id/receipts', upload.array('receipts', 5), async (req, res)
   try {
     const expenseId = req.params.id;
 
-    // Verifica se algum arquivo foi enviado
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    // Mapeia os arquivos enviados
     const receiptsData = req.files.map(file => ({
       data: file.buffer,
       name: file.originalname,
@@ -163,7 +169,6 @@ app.post('/expenses/:id/receipts', upload.array('receipts', 5), async (req, res)
       uploadedAt: new Date(),
     }));
 
-    // Adiciona as imagens ao array "receipts" da despesa
     await db.collection('expenses').updateOne(
       { _id: new ObjectId(expenseId) },
       { $push: { receipts: { $each: receiptsData } } }
@@ -178,7 +183,6 @@ app.post('/expenses/:id/receipts', upload.array('receipts', 5), async (req, res)
   }
 });
 
-
 // --------- Rota para listar metadados dos comprovantes ---------
 app.get('/expenses/:id/receipts', async (req, res) => {
   try {
@@ -191,7 +195,6 @@ app.get('/expenses/:id/receipts', async (req, res) => {
       return res.status(404).json({ error: 'Nenhum comprovante encontrado' });
     }
 
-    // Retorna apenas os metadados
     const receiptsInfo = expense.receipts.map((r, index) => ({
       index,
       name: r.name,
@@ -204,7 +207,6 @@ app.get('/expenses/:id/receipts', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // --------- Rota para exibir um comprovante específico ---------
 app.get('/expenses/:id/receipts/:index', async (req, res) => {
@@ -225,7 +227,6 @@ app.get('/expenses/:id/receipts/:index', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // --------- Atualizar status de despesa (aprovar, reprovar, parcial) ---------
 app.put('/expenses/:id/status', async (req, res) => {
@@ -289,7 +290,27 @@ app.post('/login', async (req, res) => {
     const { email, password: senhaEnviada } = req.body;
     const user = await db.collection('users').findOne({ email });
 
-    if (!user || user.password !== senhaEnviada) {
+    if (!user) {
+      return res.status(401).json({ error: "Credenciais inválidas" });
+    }
+
+    let senhaCorreta = false;
+
+    if (user.isPasswordHashed) {
+      senhaCorreta = await bcrypt.compare(senhaEnviada, user.password);
+    } else {
+      senhaCorreta = user.password === senhaEnviada;
+      if (senhaCorreta) {
+        const hashedPassword = await bcrypt.hash(senhaEnviada, 10);
+        await db.collection('users').updateOne(
+          { _id: user._id },
+          { $set: { password: hashedPassword, isPasswordHashed: true } }
+        );
+        console.log(`🔐 Senha migrada para o usuário: ${user.email}`);
+      }
+    }
+
+    if (!senhaCorreta) {
       return res.status(401).json({ error: "Credenciais inválidas" });
     }
 
